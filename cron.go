@@ -2,9 +2,9 @@ package hcron
 
 import (
 	"context"
-	"time"
-	"sync"
 	"errors"
+	"sync"
+	"time"
 )
 
 var (
@@ -113,6 +113,9 @@ func (c *Cron) worker(wg *sync.WaitGroup) {
 	}
 }
 
+// ChangeWorkers will change workers size.
+// if new size is smaller, shut appropriate number of workers down.
+// if new size is bigger, create appropriate number of workers.
 func (c *Cron) ChangeWorkers(wg *sync.WaitGroup, workers int) error {
 	if workers < 1 {
 		return ErrInvalidWorkers
