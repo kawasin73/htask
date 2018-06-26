@@ -12,8 +12,9 @@ var (
 )
 
 type Job struct {
-	t    time.Time
-	task func(time.Time)
+	chDone <-chan struct{}
+	t      time.Time
+	task   func(time.Time)
 }
 
 type Cron struct {
@@ -48,7 +49,7 @@ func (c *Cron) Add(ctx context.Context, t time.Time, task func(time.Time)) error
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
-	case c.chJob <- Job{t: t, task: task}:
+	case c.chJob <- Job{chDone: ctx.Done(), t: t, task: task}:
 		return nil
 	}
 }
@@ -79,13 +80,27 @@ func (c *Cron) scheduler(wg *sync.WaitGroup) {
 			}
 			timer.Reset(job.t.Sub(time.Now()))
 			chTime = timer.C
+		case <-job.chDone:
+			_ = h.Pop()
+			job = h.Peek()
+			if job.t.IsZero() {
+				chTime = nil
+			} else {
+				timer.Reset(job.t.Sub(time.Now()))
+			}
 		case t := <-chTime:
 			// pop all executable jobs
 			for !job.t.IsZero() && job.t.Before(t) {
 				job.t = t
 				select {
 				case <-c.ctx.Done():
-				case c.chWork <- job:
+				case <-job.chDone:
+				default:
+					select {
+					case <-c.ctx.Done():
+					case <-job.chDone:
+					case c.chWork <- job:
+					}
 				}
 				_ = h.Pop()
 				job = h.Peek()

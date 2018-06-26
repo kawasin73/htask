@@ -1,9 +1,9 @@
 package hcron
 
 import (
-	"testing"
 	"context"
 	"sync"
+	"testing"
 	"time"
 )
 
@@ -26,7 +26,9 @@ func TestCron(t *testing.T) {
 	cron := NewCron(ctx, &wg, 1)
 
 	chResult := make(chan int)
-	ctxTask, _ := context.WithCancel(context.Background())
+	ctxTask := context.Background()
+	ctxCancel, cancelTask := context.WithCancel(context.Background())
+	cancelTask()
 
 	times := make([]time.Time, 6)
 	times[0] = time.Now().Add(time.Millisecond * 100)
@@ -39,6 +41,7 @@ func TestCron(t *testing.T) {
 	cron.Add(ctxTask, times[5], mockTask{ctx: ctxTask, i: 3, chResult: chResult}.Task)
 	cron.Add(ctxTask, times[1], mockTask{ctx: ctxTask, i: 4, chResult: chResult}.Task)
 	cron.Add(ctxTask, times[1], mockTask{ctx: ctxTask, i: 4, chResult: chResult}.Task)
+	cron.Add(ctxCancel, times[4], mockTask{ctx: ctxTask, i: 5, chResult: chResult}.Task)
 
 	select {
 	case i := <-chResult:
