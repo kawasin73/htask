@@ -33,7 +33,7 @@ var (
 	ErrMax = errors.New("heap max size")
 )
 
-//
+// MinHeap is min heap for Cron
 type MinHeap struct {
 	heap jobHeap
 	max  int

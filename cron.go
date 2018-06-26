@@ -11,11 +11,9 @@ var (
 	ErrInvalidWorkers = errors.New("workers must be more than 0")
 )
 
-type Task func(time.Time)
-
 type Job struct {
 	t    time.Time
-	task Task
+	task func(time.Time)
 }
 
 type Cron struct {
@@ -37,14 +35,16 @@ func NewCron(ctx context.Context, wg *sync.WaitGroup, workers int) *Cron {
 		chFin:  make(chan struct{}),
 	}
 	for i := 0; i < workers; i++ {
-		go c.Worker(wg)
+		wg.Add(1)
+		go c.worker(wg)
 		c.wNum++
 	}
-	go c.Scheduler(wg)
+	wg.Add(1)
+	go c.scheduler(wg)
 	return c
 }
 
-func (c *Cron) Add(ctx context.Context, t time.Time, task Task) error {
+func (c *Cron) Add(ctx context.Context, t time.Time, task func(time.Time)) error {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -53,8 +53,10 @@ func (c *Cron) Add(ctx context.Context, t time.Time, task Task) error {
 	}
 }
 
-func (c *Cron) Scheduler(wg *sync.WaitGroup) {
+func (c *Cron) scheduler(wg *sync.WaitGroup) {
+	defer wg.Done()
 	// no limited min heap
+	// TODO: use limited heap
 	h := NewMinHeap(0)
 	timer := time.NewTimer(time.Second)
 	if !timer.Stop() {
@@ -68,7 +70,7 @@ func (c *Cron) Scheduler(wg *sync.WaitGroup) {
 			return
 		case job = <-c.chJob:
 			if err := h.Add(job); err != nil {
-				// TODO: handle add error
+				// TODO: heap is unlimited then no error will occur
 				panic(err)
 			}
 			job = h.Peek()
@@ -79,7 +81,7 @@ func (c *Cron) Scheduler(wg *sync.WaitGroup) {
 			chTime = timer.C
 		case t := <-chTime:
 			// pop all executable jobs
-			for job.t.Before(t) {
+			for !job.t.IsZero() && job.t.Before(t) {
 				job.t = t
 				select {
 				case <-c.ctx.Done():
@@ -97,7 +99,8 @@ func (c *Cron) Scheduler(wg *sync.WaitGroup) {
 	}
 }
 
-func (c *Cron) Worker(wg *sync.WaitGroup) {
+func (c *Cron) worker(wg *sync.WaitGroup) {
+	defer wg.Done()
 	for {
 		select {
 		case <-c.ctx.Done():
@@ -110,7 +113,7 @@ func (c *Cron) Worker(wg *sync.WaitGroup) {
 	}
 }
 
-func (c *Cron) ChangeWorker(wg *sync.WaitGroup, workers int) error {
+func (c *Cron) ChangeWorkers(wg *sync.WaitGroup, workers int) error {
 	if workers < 1 {
 		return ErrInvalidWorkers
 	}
@@ -123,7 +126,8 @@ func (c *Cron) ChangeWorker(wg *sync.WaitGroup, workers int) error {
 				c.wNum--
 			}
 		} else {
-			go c.Worker(wg)
+			wg.Add(1)
+			go c.worker(wg)
 			c.wNum++
 		}
 	}
