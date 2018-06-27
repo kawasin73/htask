@@ -63,51 +63,39 @@ func (c *Cron) scheduler(wg *sync.WaitGroup) {
 	if !timer.Stop() {
 		<-timer.C
 	}
-	var chTime <-chan time.Time
 	var job Job
+	var chWork chan<- Job
 	for {
 		select {
 		case <-c.ctx.Done():
 			return
-		case job = <-c.chJob:
-			if err := h.Add(job); err != nil {
+		case newJob := <-c.chJob:
+			if err := h.Add(newJob); err != nil {
 				// TODO: heap is unlimited then no error will occur
 				panic(err)
 			}
-			job = h.Peek()
-			if chTime != nil && !timer.Stop() {
-				<-chTime
+			if !job.t.IsZero() && !timer.Stop() {
+				<-timer.C
 			}
+			job = h.Peek()
 			timer.Reset(job.t.Sub(time.Now()))
-			chTime = timer.C
 		case <-job.chDone:
+			if !job.t.IsZero() && !timer.Stop() {
+				<-timer.C
+			}
 			_ = h.Pop()
 			job = h.Peek()
-			if job.t.IsZero() {
-				chTime = nil
-			} else {
+			if !job.t.IsZero() {
 				timer.Reset(job.t.Sub(time.Now()))
 			}
-		case t := <-chTime:
-			// pop all executable jobs
-			for !job.t.IsZero() && job.t.Before(t) {
-				job.t = t
-				select {
-				case <-c.ctx.Done():
-				case <-job.chDone:
-				default:
-					select {
-					case <-c.ctx.Done():
-					case <-job.chDone:
-					case c.chWork <- job:
-					}
-				}
-				_ = h.Pop()
-				job = h.Peek()
-			}
-			if job.t.IsZero() {
-				chTime = nil
-			} else {
+		case t := <-timer.C:
+			chWork = c.chWork
+			job.t = t
+		case chWork <- job:
+			chWork = nil
+			_ = h.Pop()
+			job = h.Peek()
+			if !job.t.IsZero() {
 				timer.Reset(job.t.Sub(time.Now()))
 			}
 		}
