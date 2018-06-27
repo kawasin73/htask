@@ -1,39 +1,46 @@
 package hcron
 
 import (
-	"context"
 	"errors"
 	"sync"
 	"time"
 )
 
+// errors
 var (
+	ErrClosed         = errors.New("cron is already closed")
 	ErrInvalidWorkers = errors.New("workers must be more than 0")
+	ErrTaskCancelled  = errors.New("task cancelled")
 )
 
-type Job struct {
-	chDone <-chan struct{}
-	t      time.Time
-	task   func(time.Time)
+type job struct {
+	chCancel <-chan struct{}
+	t        time.Time
+	task     func(time.Time)
 }
 
+// Cron is used to schedule tasks.
 type Cron struct {
-	ctx    context.Context
-	chJob  chan Job
-	chWork chan Job
-	chFin  chan struct{}
-	wNum   int
+	chClose chan struct{}
+	wg      *sync.WaitGroup
+	chJob   chan job
+	chWork  chan job
+	chFin   chan struct{}
+	wNum    int
 }
 
-func NewCron(ctx context.Context, wg *sync.WaitGroup, workers int) *Cron {
+// NewCron creates Cron and start scheduler and workers.
+// number of created goroutines is counted to sync.WaitGroup.
+func NewCron(wg *sync.WaitGroup, workers int) *Cron {
 	if workers < 1 {
 		workers = 1
 	}
 	c := &Cron{
-		ctx:    ctx,
-		chJob:  make(chan Job),
-		chWork: make(chan Job),
-		chFin:  make(chan struct{}),
+		chClose: make(chan struct{}),
+		wg:      wg,
+		chJob:   make(chan job),
+		chWork:  make(chan job),
+		chFin:   make(chan struct{}),
 	}
 	for i := 0; i < workers; i++ {
 		wg.Add(1)
@@ -45,11 +52,15 @@ func NewCron(ctx context.Context, wg *sync.WaitGroup, workers int) *Cron {
 	return c
 }
 
-func (c *Cron) Add(ctx context.Context, t time.Time, task func(time.Time)) error {
+// Set enqueue new task to scheduler heap queue.
+// task will be cancelled by closing chCancel.
+func (c *Cron) Set(chCancel <-chan struct{}, t time.Time, task func(time.Time)) error {
 	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case c.chJob <- Job{chDone: ctx.Done(), t: t, task: task}:
+	case <-c.chClose:
+		return ErrClosed
+	case <-chCancel:
+		return ErrTaskCancelled
+	case c.chJob <- job{chCancel: chCancel, t: t, task: task}:
 		return nil
 	}
 }
@@ -58,45 +69,45 @@ func (c *Cron) scheduler(wg *sync.WaitGroup) {
 	defer wg.Done()
 	// no limited min heap
 	// TODO: use limited heap
-	h := NewMinHeap(0)
+	h := newMinHeap(0)
 	timer := time.NewTimer(time.Second)
 	if !timer.Stop() {
 		<-timer.C
 	}
-	var job Job
-	var chWork chan<- Job
+	var j job
+	var chWork chan<- job
 	for {
 		select {
-		case <-c.ctx.Done():
+		case <-c.chClose:
 			return
 		case newJob := <-c.chJob:
-			if err := h.Add(newJob); err != nil {
+			if err := h.add(newJob); err != nil {
 				// TODO: heap is unlimited then no error will occur
 				panic(err)
 			}
-			if !job.t.IsZero() && !timer.Stop() {
+			if chWork == nil && !j.t.IsZero() && !timer.Stop() {
 				<-timer.C
 			}
-			job = h.Peek()
-			timer.Reset(job.t.Sub(time.Now()))
-		case <-job.chDone:
-			if !job.t.IsZero() && !timer.Stop() {
+			j = h.peek()
+			timer.Reset(j.t.Sub(time.Now()))
+		case <-j.chCancel:
+			if chWork == nil && !j.t.IsZero() && !timer.Stop() {
 				<-timer.C
 			}
-			_ = h.Pop()
-			job = h.Peek()
-			if !job.t.IsZero() {
-				timer.Reset(job.t.Sub(time.Now()))
+			_ = h.pop()
+			j = h.peek()
+			if !j.t.IsZero() {
+				timer.Reset(j.t.Sub(time.Now()))
 			}
 		case t := <-timer.C:
 			chWork = c.chWork
-			job.t = t
-		case chWork <- job:
+			j.t = t
+		case chWork <- j:
 			chWork = nil
-			_ = h.Pop()
-			job = h.Peek()
-			if !job.t.IsZero() {
-				timer.Reset(job.t.Sub(time.Now()))
+			_ = h.pop()
+			j = h.peek()
+			if !j.t.IsZero() {
+				timer.Reset(j.t.Sub(time.Now()))
 			}
 		}
 	}
@@ -106,36 +117,56 @@ func (c *Cron) worker(wg *sync.WaitGroup) {
 	defer wg.Done()
 	for {
 		select {
-		case <-c.ctx.Done():
+		case <-c.chClose:
 			return
 		case <-c.chFin:
 			return
-		case job := <-c.chWork:
-			job.task(job.t)
+		case j := <-c.chWork:
+			j.task(j.t)
 		}
 	}
 }
 
-// ChangeWorkers will change workers size.
+// ChangeWorkers will change workers size. workers must greater than 0.
 // if new size is smaller, shut appropriate number of workers down.
 // if new size is bigger, create appropriate number of workers.
-func (c *Cron) ChangeWorkers(wg *sync.WaitGroup, workers int) error {
+func (c *Cron) ChangeWorkers(workers int) error {
 	if workers < 1 {
 		return ErrInvalidWorkers
 	}
 	for c.wNum != workers {
-		if c.wNum < workers {
+		if c.wNum > workers {
 			select {
-			case <-c.ctx.Done():
-				return c.ctx.Err()
+			case <-c.chClose:
+				return ErrClosed
 			case c.chFin <- struct{}{}:
 				c.wNum--
 			}
 		} else {
-			wg.Add(1)
-			go c.worker(wg)
+			c.wg.Add(1)
+			go c.worker(c.wg)
 			c.wNum++
 		}
+	}
+	return nil
+}
+
+// Close shutdown scheduler and workers goroutine.
+// if cron is already closed then returns ErrClosed.
+func (c *Cron) Close() error {
+	for c.wNum > 0 {
+		select {
+		case <-c.chClose:
+			return ErrClosed
+		case c.chFin <- struct{}{}:
+		}
+		c.wNum--
+	}
+	select {
+	case <-c.chClose:
+		return ErrClosed
+	default:
+		close(c.chClose)
 	}
 	return nil
 }

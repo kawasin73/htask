@@ -27,23 +27,27 @@ import (
 )
 
 func main() {
-	ctx, cancel := context.WithCancel(context.Background())
 	var wg sync.WaitGroup
-	workerNumber := 1
-	cron := hcron.NewCron(ctx, &wg, workerNumber)
+	workers := 1
+	cron := hcron.NewCron(&wg, workers)
 
-	ctxTask, _ := context.WithCancel(context.Background())
-	cron.Add(ctxTask, time.Now().Add(time.Minute), func(t time.Time) {
+	ctx, _ := context.WithCancel(context.Background())
+	cron.Set(ctx.Done(), time.Now().Add(time.Second*2), func(t time.Time) {
 		fmt.Println("later executed at :", t)
 	})
-	cron.Add(ctxTask, time.Now().Add(30*time.Second), func(t time.Time) {
+	cron.Set(ctx.Done(), time.Now().Add(time.Second), func(t time.Time) {
 		fmt.Println("first executed at :", t)
+		cron.Set(ctx.Done(), time.Now().Add(time.Millisecond*500), func(t time.Time) {
+			fmt.Println("second executed at :", t)
+		})
 	})
 
-	cron.ChangeWorkers(&wg, 10)
+	cron.ChangeWorkers(10)
+
+	time.Sleep(3 * time.Second)
 
 	// on shutdown
-	cancel()
+	cron.Close()
 	wg.Wait()
 }
 
@@ -51,9 +55,10 @@ func main() {
 
 ## Interface
 
-- `func NewCron(ctx context.Context, wg *sync.WaitGroup, workers int) *Cron`
-- `func (c *Cron) Add(ctx context.Context, t time.Time, task func(time.Time)) error`
-- `func (c *Cron) ChangeWorkers(wg *sync.WaitGroup, workers int) error`
+- `func NewCron(wg *sync.WaitGroup, workers int) *Cron`
+- `func (c *Cron) Set(chCancel <-chan struct{}, t time.Time, task func(time.Time)) error`
+- `func (c *Cron) ChangeWorkers(workers int) error`
+- `func (c *Cron) Close() error`
 
 ## Notes
 

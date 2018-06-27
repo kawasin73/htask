@@ -5,12 +5,14 @@ import (
 	"errors"
 )
 
-type jobHeap []Job
+type jobHeap []job
 
+// Len is length of jobHeap
 func (h *jobHeap) Len() int {
 	return len(*h)
 }
 
+// Less means job j is newer than i
 func (h *jobHeap) Less(i, j int) bool {
 	return !(*h)[i].t.After((*h)[j].t)
 }
@@ -20,56 +22,58 @@ func (h *jobHeap) Swap(i, j int) {
 	(*h)[i], (*h)[j] = (*h)[j], (*h)[i]
 }
 
+// Push adds x to tail
 func (h *jobHeap) Push(x interface{}) {
-	*h = append(*h, x.(Job))
+	*h = append(*h, x.(job))
 }
 
+// Pop removes x from head
 func (h *jobHeap) Pop() (x interface{}) {
 	x, *h = (*h)[len(*h)-1], (*h)[:len(*h)-1]
 	return
 }
 
+// errors
 var (
 	ErrMax = errors.New("heap max size")
 )
 
-// MinHeap is min heap for Cron
-type MinHeap struct {
+type minHeap struct {
 	heap jobHeap
 	max  int
 }
 
-func NewMinHeap(max int) *MinHeap {
+func newMinHeap(max int) *minHeap {
 	if max < 0 {
 		max = 0
 	}
-	h := &MinHeap{heap: make(jobHeap, 0, max), max: max}
+	h := &minHeap{heap: make(jobHeap, 0, max), max: max}
 	heap.Init(&h.heap)
 	return h
 }
 
-func (h *MinHeap) Add(job Job) error {
+func (h *minHeap) add(j job) error {
 	if h.max > 0 && len(h.heap) >= h.max {
 		return ErrMax
 	}
-	heap.Push(&h.heap, job)
+	heap.Push(&h.heap, j)
 	return nil
 }
 
-func (h *MinHeap) Pop() Job {
+func (h *minHeap) pop() job {
 	if len(h.heap) == 0 {
-		return Job{}
+		return job{}
 	}
-	return heap.Pop(&h.heap).(Job)
+	return heap.Pop(&h.heap).(job)
 }
 
-func (h *MinHeap) Peek() Job {
+func (h *minHeap) peek() job {
 	if len(h.heap) == 0 {
-		return Job{}
+		return job{}
 	}
 	return h.heap[0]
 }
 
-func (h *MinHeap) Size() int {
+func (h *minHeap) size() int {
 	return len(h.heap)
 }

@@ -21,12 +21,11 @@ func (m mockTask) Task(ts time.Time) {
 }
 
 func TestCron(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
 	var wg sync.WaitGroup
-	cron := NewCron(ctx, &wg, 1)
+	cron := NewCron(&wg, 1)
 
 	chResult := make(chan int)
-	ctxTask := context.Background()
+	ctx := context.Background()
 	ctxCancel, cancelTask := context.WithCancel(context.Background())
 	cancelTask()
 
@@ -35,16 +34,16 @@ func TestCron(t *testing.T) {
 	for i := 1; i < 10; i++ {
 		times[i] = times[i-1].Add(1)
 	}
-	cron.Add(ctxTask, times[0], mockTask{ctx: ctxTask, i: 0, chResult: chResult}.Task)
-	cron.Add(ctxTask, times[3], mockTask{ctx: ctxTask, i: 1, chResult: chResult}.Task)
-	cron.Add(ctxTask, times[2], mockTask{ctx: ctxTask, i: 2, chResult: chResult}.Task)
-	cron.Add(ctxTask, times[5], mockTask{ctx: ctxTask, i: 3, chResult: chResult}.Task)
-	cron.Add(ctxTask, times[1], mockTask{ctx: ctxTask, i: 4, chResult: chResult}.Task)
-	cron.Add(ctxTask, times[1], mockTask{ctx: ctxTask, i: 4, chResult: chResult}.Task)
-	cron.Add(ctxCancel, times[4], mockTask{ctx: ctxTask, i: 5, chResult: chResult}.Task)
-	cron.Add(ctxTask, times[2], func(ts time.Time) {
-		cron.Add(ctxTask, times[7], mockTask{ctx: ctxTask, i: 6, chResult: chResult}.Task)
-		cron.Add(ctxTask, times[6], mockTask{ctx: ctxTask, i: 7, chResult: chResult}.Task)
+	cron.Set(ctx.Done(), times[0], mockTask{ctx: ctx, i: 0, chResult: chResult}.Task)
+	cron.Set(ctx.Done(), times[3], mockTask{ctx: ctx, i: 1, chResult: chResult}.Task)
+	cron.Set(ctx.Done(), times[2], mockTask{ctx: ctx, i: 2, chResult: chResult}.Task)
+	cron.Set(ctx.Done(), times[5], mockTask{ctx: ctx, i: 3, chResult: chResult}.Task)
+	cron.Set(ctx.Done(), times[1], mockTask{ctx: ctx, i: 4, chResult: chResult}.Task)
+	cron.Set(ctx.Done(), times[1], mockTask{ctx: ctx, i: 4, chResult: chResult}.Task)
+	cron.Set(ctxCancel.Done(), times[4], mockTask{ctx: ctx, i: 5, chResult: chResult}.Task)
+	cron.Set(ctx.Done(), times[2], func(ts time.Time) {
+		cron.Set(ctx.Done(), times[7], mockTask{ctx: ctx, i: 6, chResult: chResult}.Task)
+		cron.Set(ctx.Done(), times[6], mockTask{ctx: ctx, i: 7, chResult: chResult}.Task)
 	})
 
 	select {
@@ -62,10 +61,8 @@ func TestCron(t *testing.T) {
 			if r != i {
 				t.Errorf("result received but not euqal %v != %v", r, i)
 			}
-		case <-time.After(time.Millisecond * 50):
-			t.Fatal("result waited timeout :", i)
 		}
 	}
-	cancel()
+	cron.Close()
 	wg.Wait()
 }
