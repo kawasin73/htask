@@ -103,11 +103,17 @@ func (c *Cron) scheduler(wg *sync.WaitGroup) {
 			chWork = c.chWork
 			j.t = t
 		case chWork <- j:
-			chWork = nil
+			prev := j.t
 			_ = h.pop()
 			j = h.peek()
-			if !j.t.IsZero() {
+			if j.t.IsZero() {
+				chWork = nil
+			} else if j.t.After(prev) {
+				chWork = nil
 				timer.Reset(j.t.Sub(time.Now()))
+			} else {
+				// enqueue to worker
+				j.t = prev
 			}
 		}
 	}
