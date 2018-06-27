@@ -64,6 +64,7 @@ func (c *Cron) scheduler(wg *sync.WaitGroup) {
 		<-timer.C
 	}
 	var job Job
+	var chWork chan<- Job
 	for {
 		select {
 		case <-c.ctx.Done():
@@ -88,22 +89,12 @@ func (c *Cron) scheduler(wg *sync.WaitGroup) {
 				timer.Reset(job.t.Sub(time.Now()))
 			}
 		case t := <-timer.C:
-			// pop all executable jobs
-			for !job.t.IsZero() && job.t.Before(t) {
-				job.t = t
-				select {
-				case <-c.ctx.Done():
-				case <-job.chDone:
-				default:
-					select {
-					case <-c.ctx.Done():
-					case <-job.chDone:
-					case c.chWork <- job:
-					}
-				}
-				_ = h.Pop()
-				job = h.Peek()
-			}
+			chWork = c.chWork
+			job.t = t
+		case chWork <- job:
+			chWork = nil
+			_ = h.Pop()
+			job = h.Peek()
 			if !job.t.IsZero() {
 				timer.Reset(job.t.Sub(time.Now()))
 			}

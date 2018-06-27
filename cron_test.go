@@ -30,9 +30,9 @@ func TestCron(t *testing.T) {
 	ctxCancel, cancelTask := context.WithCancel(context.Background())
 	cancelTask()
 
-	times := make([]time.Time, 6)
+	times := make([]time.Time, 10)
 	times[0] = time.Now().Add(time.Millisecond * 100)
-	for i := 1; i < 6; i++ {
+	for i := 1; i < 10; i++ {
 		times[i] = times[i-1].Add(1)
 	}
 	cron.Add(ctxTask, times[0], mockTask{ctx: ctxTask, i: 0, chResult: chResult}.Task)
@@ -42,6 +42,10 @@ func TestCron(t *testing.T) {
 	cron.Add(ctxTask, times[1], mockTask{ctx: ctxTask, i: 4, chResult: chResult}.Task)
 	cron.Add(ctxTask, times[1], mockTask{ctx: ctxTask, i: 4, chResult: chResult}.Task)
 	cron.Add(ctxCancel, times[4], mockTask{ctx: ctxTask, i: 5, chResult: chResult}.Task)
+	cron.Add(ctxTask, times[2], func(ts time.Time) {
+		cron.Add(ctxTask, times[7], mockTask{ctx: ctxTask, i: 6, chResult: chResult}.Task)
+		cron.Add(ctxTask, times[6], mockTask{ctx: ctxTask, i: 7, chResult: chResult}.Task)
+	})
 
 	select {
 	case i := <-chResult:
@@ -51,7 +55,7 @@ func TestCron(t *testing.T) {
 
 	time.Sleep(time.Millisecond * 100)
 
-	result := []int{0, 4, 4, 2, 1, 3}
+	result := []int{0, 4, 4, 2, 1, 3, 7, 6}
 	for _, i := range result {
 		select {
 		case r := <-chResult:
@@ -59,7 +63,7 @@ func TestCron(t *testing.T) {
 				t.Errorf("result received but not euqal %v != %v", r, i)
 			}
 		case <-time.After(time.Millisecond * 10):
-			t.Fatal("result waited timeout")
+			t.Fatal("result waited timeout :", i)
 		}
 	}
 	cancel()
