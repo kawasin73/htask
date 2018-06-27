@@ -1,15 +1,15 @@
-# hcron (min Heap CRON)
+# htask (min Heap TASK runner)
 
-[![CircleCI](https://circleci.com/gh/kawasin73/hcron/tree/master.svg?style=svg)](https://circleci.com/gh/kawasin73/hcron/tree/master)
+[![CircleCI](https://circleci.com/gh/kawasin73/htask/tree/master.svg?style=svg)](https://circleci.com/gh/kawasin73/htask/tree/master)
 
 In-memory task scheduler using Min Heap implemented in Golang.
 
-hcron creates only `1 (scheduler) + n (worker)` goroutines, NOT creating goroutines for each task.
+htask creates only `1 (scheduler) + n (worker)` goroutines, NOT creating goroutines for each task.
 
 ## Install
 
 ```bash
-go get github.com/kawasin73/hcron
+go get github.com/kawasin73/htask
 ```
 
 ## Usage
@@ -23,31 +23,31 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kawasin73/hcron"
+	"github.com/kawasin73/htask"
 )
 
 func main() {
 	var wg sync.WaitGroup
 	workers := 1
-	cron := hcron.NewCron(&wg, workers)
+	scheduler := htask.NewScheduler(&wg, workers)
 
 	ctx, _ := context.WithCancel(context.Background())
-	cron.Set(ctx.Done(), time.Now().Add(time.Second*2), func(t time.Time) {
+	scheduler.Set(ctx.Done(), time.Now().Add(time.Second*2), func(t time.Time) {
 		fmt.Println("later executed at :", t)
 	})
-	cron.Set(ctx.Done(), time.Now().Add(time.Second), func(t time.Time) {
+	scheduler.Set(ctx.Done(), time.Now().Add(time.Second), func(t time.Time) {
 		fmt.Println("first executed at :", t)
-		cron.Set(ctx.Done(), time.Now().Add(time.Millisecond*500), func(t time.Time) {
+		scheduler.Set(ctx.Done(), time.Now().Add(time.Millisecond*500), func(t time.Time) {
 			fmt.Println("second executed at :", t)
 		})
 	})
 
-	cron.ChangeWorkers(10)
+	scheduler.ChangeWorkers(10)
 
 	time.Sleep(3 * time.Second)
 
 	// on shutdown
-	cron.Close()
+	scheduler.Close()
 	wg.Wait()
 }
 
@@ -55,10 +55,10 @@ func main() {
 
 ## Interface
 
-- `func NewCron(wg *sync.WaitGroup, workers int) *Cron`
-- `func (c *Cron) Set(chCancel <-chan struct{}, t time.Time, task func(time.Time)) error`
-- `func (c *Cron) ChangeWorkers(workers int) error`
-- `func (c *Cron) Close() error`
+- `func NewScheduler(wg *sync.WaitGroup, workers int) *Scheduler`
+- `func (s *Scheduler) Set(chCancel <-chan struct{}, t time.Time, task func(time.Time)) error`
+- `func (s *Scheduler) ChangeWorkers(workers int) error`
+- `func (s *Scheduler) Close() error`
 
 ## Notes
 

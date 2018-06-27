@@ -1,4 +1,4 @@
-package hcron
+package htask
 
 import (
 	"errors"
@@ -8,7 +8,7 @@ import (
 
 // errors
 var (
-	ErrClosed         = errors.New("cron is already closed")
+	ErrClosed         = errors.New("scheduler is already closed")
 	ErrInvalidWorkers = errors.New("workers must be more than 0")
 	ErrTaskCancelled  = errors.New("task cancelled")
 )
@@ -19,8 +19,8 @@ type job struct {
 	task     func(time.Time)
 }
 
-// Cron is used to schedule tasks.
-type Cron struct {
+// Scheduler is used to schedule tasks.
+type Scheduler struct {
 	chClose chan struct{}
 	wg      *sync.WaitGroup
 	chJob   chan job
@@ -29,13 +29,13 @@ type Cron struct {
 	wNum    int
 }
 
-// NewCron creates Cron and start scheduler and workers.
+// NewScheduler creates Scheduler and start scheduler and workers.
 // number of created goroutines is counted to sync.WaitGroup.
-func NewCron(wg *sync.WaitGroup, workers int) *Cron {
+func NewScheduler(wg *sync.WaitGroup, workers int) *Scheduler {
 	if workers < 1 {
 		workers = 1
 	}
-	c := &Cron{
+	c := &Scheduler{
 		chClose: make(chan struct{}),
 		wg:      wg,
 		chJob:   make(chan job),
@@ -53,8 +53,8 @@ func NewCron(wg *sync.WaitGroup, workers int) *Cron {
 }
 
 // Set enqueue new task to scheduler heap queue.
-// task will be cancelled by closing chCancel.
-func (c *Cron) Set(chCancel <-chan struct{}, t time.Time, task func(time.Time)) error {
+// task will be cancelled by closing chCancel. chCancel == nil is acceptable.
+func (c *Scheduler) Set(chCancel <-chan struct{}, t time.Time, task func(time.Time)) error {
 	select {
 	case <-c.chClose:
 		return ErrClosed
@@ -65,7 +65,7 @@ func (c *Cron) Set(chCancel <-chan struct{}, t time.Time, task func(time.Time)) 
 	}
 }
 
-func (c *Cron) scheduler(wg *sync.WaitGroup) {
+func (c *Scheduler) scheduler(wg *sync.WaitGroup) {
 	defer wg.Done()
 	// no limited min heap
 	// TODO: use limited heap
@@ -119,7 +119,7 @@ func (c *Cron) scheduler(wg *sync.WaitGroup) {
 	}
 }
 
-func (c *Cron) worker(wg *sync.WaitGroup) {
+func (c *Scheduler) worker(wg *sync.WaitGroup) {
 	defer wg.Done()
 	for {
 		select {
@@ -136,7 +136,7 @@ func (c *Cron) worker(wg *sync.WaitGroup) {
 // ChangeWorkers will change workers size. workers must greater than 0.
 // if new size is smaller, shut appropriate number of workers down.
 // if new size is bigger, create appropriate number of workers.
-func (c *Cron) ChangeWorkers(workers int) error {
+func (c *Scheduler) ChangeWorkers(workers int) error {
 	if workers < 1 {
 		return ErrInvalidWorkers
 	}
@@ -158,8 +158,8 @@ func (c *Cron) ChangeWorkers(workers int) error {
 }
 
 // Close shutdown scheduler and workers goroutine.
-// if cron is already closed then returns ErrClosed.
-func (c *Cron) Close() error {
+// if Scheduler is already closed then returns ErrClosed.
+func (c *Scheduler) Close() error {
 	for c.wNum > 0 {
 		select {
 		case <-c.chClose:
