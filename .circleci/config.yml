@@ -1,0 +1,30 @@
+version: 2
+jobs:
+  build:
+    docker:
+      - image: circleci/golang:1.10
+
+    working_directory: /go/src/github.com/kawasin73/hcron
+
+    environment:
+      TEST_RESULTS: /tmp/test-results
+
+    steps:
+      - run:
+          name: installing go-junit-report
+          command: go get -u github.com/jstemmer/go-junit-report
+
+      - checkout
+
+      - run:
+          name: running unit tests
+          command: |
+            mkdir -p $TEST_RESULTS
+            trap "go-junit-report <${TEST_RESULTS}/go-test.out > ${TEST_RESULTS}/go-test-report.xml" EXIT
+            go test -v | tee ${TEST_RESULTS}/go-test.out
+      - store_artifacts:
+          path: /tmp/test-results
+          destination: raw-test-output
+
+      - store_test_results:
+          path: /tmp/test-results

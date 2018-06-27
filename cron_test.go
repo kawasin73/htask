@@ -62,7 +62,7 @@ func TestCron(t *testing.T) {
 			if r != i {
 				t.Errorf("result received but not euqal %v != %v", r, i)
 			}
-		case <-time.After(time.Millisecond * 10):
+		case <-time.After(time.Millisecond * 50):
 			t.Fatal("result waited timeout :", i)
 		}
 	}
