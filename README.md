@@ -1,5 +1,7 @@
 # hcron (min Heap CRON)
 
+[![CircleCI](https://circleci.com/gh/kawasin73/hcron/tree/master.svg?style=svg)](https://circleci.com/gh/kawasin73/hcron/tree/master)
+
 In-memory task scheduler using Min Heap implemented in Golang.
 
 hcron creates only `1 (scheduler) + n (worker)` goroutines, NOT creating goroutines for each task.
