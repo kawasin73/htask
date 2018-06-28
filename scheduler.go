@@ -10,6 +10,8 @@ import (
 var (
 	ErrClosed         = errors.New("scheduler is already closed")
 	ErrInvalidWorkers = errors.New("workers must be more than 0")
+	ErrInvalidTime    = errors.New("time is invalid zero time")
+	ErrInvalidTask    = errors.New("task must not be nil")
 	ErrTaskCancelled  = errors.New("task cancelled")
 )
 
@@ -55,6 +57,11 @@ func NewScheduler(wg *sync.WaitGroup, workers int) *Scheduler {
 // Set enqueue new task to scheduler heap queue.
 // task will be cancelled by closing chCancel. chCancel == nil is acceptable.
 func (c *Scheduler) Set(chCancel <-chan struct{}, t time.Time, task func(time.Time)) error {
+	if t.IsZero() {
+		return ErrInvalidTime
+	} else if task == nil {
+		return ErrInvalidTask
+	}
 	select {
 	case <-c.chClose:
 		return ErrClosed

@@ -2,6 +2,7 @@ package htask
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -23,6 +24,10 @@ func (m mockTask) Task(ts time.Time) {
 func TestScheduler(t *testing.T) {
 	var wg sync.WaitGroup
 	scheduler := NewScheduler(&wg, 1)
+	defer func() {
+		scheduler.Close()
+		wg.Wait()
+	}()
 
 	chResult := make(chan int)
 	ctx := context.Background()
@@ -63,6 +68,22 @@ func TestScheduler(t *testing.T) {
 			}
 		}
 	}
-	scheduler.Close()
-	wg.Wait()
+}
+
+func TestScheduler_Set(t *testing.T) {
+	var wg sync.WaitGroup
+	scheduler := NewScheduler(&wg, 1)
+	defer func() {
+		scheduler.Close()
+		wg.Wait()
+	}()
+
+	task := func(_ time.Time) { fmt.Println("invalid time") }
+
+	if err := scheduler.Set(nil, time.Time{}, task); err != ErrInvalidTime {
+		t.Errorf("zero time error : %v expected %v", err, ErrInvalidTime)
+	}
+	if err := scheduler.Set(nil, time.Now(), nil); err != ErrInvalidTask {
+		t.Errorf("nil task error : %v expected %v", err, ErrInvalidTask)
+	}
 }
