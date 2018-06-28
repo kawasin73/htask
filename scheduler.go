@@ -23,26 +23,28 @@ type job struct {
 
 // Scheduler is used to schedule tasks.
 type Scheduler struct {
-	chClose chan struct{}
-	wg      *sync.WaitGroup
-	chJob   chan job
-	chWork  chan job
-	chFin   chan struct{}
-	wNum    int
+	chClose   chan struct{}
+	wg        *sync.WaitGroup
+	chJob     chan job
+	chWork    chan job
+	chFin     chan struct{}
+	chWorkers chan int
+	wNum      int
 }
 
 // NewScheduler creates Scheduler and start scheduler and workers.
 // number of created goroutines is counted to sync.WaitGroup.
 func NewScheduler(wg *sync.WaitGroup, workers int) *Scheduler {
-	if workers < 1 {
-		workers = 1
+	if workers < 0 {
+		workers = 0
 	}
 	c := &Scheduler{
-		chClose: make(chan struct{}),
-		wg:      wg,
-		chJob:   make(chan job),
-		chWork:  make(chan job),
-		chFin:   make(chan struct{}),
+		chClose:   make(chan struct{}),
+		wg:        wg,
+		chJob:     make(chan job),
+		chWork:    make(chan job),
+		chFin:     make(chan struct{}),
+		chWorkers: make(chan int),
 	}
 	for i := 0; i < workers; i++ {
 		wg.Add(1)
@@ -50,7 +52,7 @@ func NewScheduler(wg *sync.WaitGroup, workers int) *Scheduler {
 		c.wNum++
 	}
 	wg.Add(1)
-	go c.scheduler(wg)
+	go c.scheduler(wg, workers)
 	return c
 }
 
@@ -72,7 +74,7 @@ func (c *Scheduler) Set(chCancel <-chan struct{}, t time.Time, task func(time.Ti
 	}
 }
 
-func (c *Scheduler) scheduler(wg *sync.WaitGroup) {
+func (c *Scheduler) scheduler(wg *sync.WaitGroup, workers int) {
 	defer wg.Done()
 	// no limited min heap
 	// TODO: use limited heap
@@ -87,6 +89,16 @@ func (c *Scheduler) scheduler(wg *sync.WaitGroup) {
 		select {
 		case <-c.chClose:
 			return
+		case workers = <-c.chWorkers:
+			if workers == 0 && chWork != nil {
+				go j.task(j.t)
+				chWork = nil
+				_ = h.pop()
+				j = h.peek()
+				if !j.t.IsZero() {
+					timer.Reset(j.t.Sub(time.Now()))
+				}
+			}
 		case newJob := <-c.chJob:
 			if err := h.add(newJob); err != nil {
 				// TODO: heap is unlimited then no error will occur
@@ -109,8 +121,20 @@ func (c *Scheduler) scheduler(wg *sync.WaitGroup) {
 				timer.Reset(j.t.Sub(time.Now()))
 			}
 		case t := <-timer.C:
-			chWork = c.chWork
-			j.t = t
+			if workers == 0 {
+				for !j.t.IsZero() && !j.t.After(t) {
+					j.t = t
+					go j.task(j.t)
+					_ = h.pop()
+					j = h.peek()
+				}
+				if !j.t.IsZero() {
+					timer.Reset(j.t.Sub(time.Now()))
+				}
+			} else {
+				j.t = t
+				chWork = c.chWork
+			}
 		case chWork <- j:
 			prev := j.t
 			_ = h.pop()
@@ -146,7 +170,7 @@ func (c *Scheduler) worker(wg *sync.WaitGroup) {
 // if new size is smaller, shut appropriate number of workers down.
 // if new size is bigger, create appropriate number of workers.
 func (c *Scheduler) ChangeWorkers(workers int) error {
-	if workers < 1 {
+	if workers < 0 {
 		return ErrInvalidWorkers
 	}
 	for c.wNum != workers {
@@ -162,6 +186,10 @@ func (c *Scheduler) ChangeWorkers(workers int) error {
 			go c.worker(c.wg)
 			c.wNum++
 		}
+	}
+	select {
+	case <-c.chClose:
+	case c.chWorkers <- workers:
 	}
 	return nil
 }
