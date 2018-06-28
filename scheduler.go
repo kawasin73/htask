@@ -79,7 +79,7 @@ type scheduleState struct {
 	job     job
 	chWork  chan<- job
 	timer   *time.Timer
-	expired bool
+	expired bool // timer is expired or not
 }
 
 func newScheduleState(heapSize int) *scheduleState {
@@ -201,6 +201,7 @@ func (c *Scheduler) ChangeWorkers(workers int) error {
 	select {
 	case <-c.chClose:
 	case c.chWorkers <- workers:
+		// notify scheduler that workers size have changed
 	}
 	return nil
 }
