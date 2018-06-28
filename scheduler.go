@@ -89,6 +89,7 @@ func (c *Scheduler) scheduler(wg *sync.WaitGroup) {
 				<-timer.C
 			}
 			j = h.peek()
+			chWork = nil
 			timer.Reset(j.t.Sub(time.Now()))
 		case <-j.chCancel:
 			if chWork == nil && !j.t.IsZero() && !timer.Stop() {
@@ -96,6 +97,7 @@ func (c *Scheduler) scheduler(wg *sync.WaitGroup) {
 			}
 			_ = h.pop()
 			j = h.peek()
+			chWork = nil
 			if !j.t.IsZero() {
 				timer.Reset(j.t.Sub(time.Now()))
 			}
