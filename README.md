@@ -1,4 +1,4 @@
-# htask (min Heap TASK runner)
+# htask (min Heap TASK scheduler)
 
 [![CircleCI](https://circleci.com/gh/kawasin73/htask/tree/master.svg?style=svg)](https://circleci.com/gh/kawasin73/htask/tree/master)
 
