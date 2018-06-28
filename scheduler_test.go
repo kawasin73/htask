@@ -87,3 +87,52 @@ func TestScheduler_Set(t *testing.T) {
 		t.Errorf("nil task error : %v expected %v", err, ErrInvalidTask)
 	}
 }
+
+func TestScheduler_ChangeWorkers(t *testing.T) {
+	var wg sync.WaitGroup
+	scheduler := NewScheduler(&wg, 1)
+	defer func() {
+		scheduler.Close()
+		wg.Wait()
+	}()
+
+	chResult := make(chan int)
+	ctx := context.Background()
+
+	testSchedule := func(workers int) {
+		times := make([]time.Time, 10)
+		times[0] = time.Now().Add(time.Millisecond * 50)
+		for i := 1; i < 10; i++ {
+			times[i] = times[i-1].Add(1)
+		}
+
+		scheduler.Set(ctx.Done(), times[0], mockTask{ctx: ctx, i: 0, chResult: chResult}.Task)
+		scheduler.Set(ctx.Done(), times[1], mockTask{ctx: ctx, i: 0, chResult: chResult}.Task)
+		scheduler.Set(ctx.Done(), times[2], mockTask{ctx: ctx, i: 0, chResult: chResult}.Task)
+
+		time.Sleep(time.Millisecond * 50)
+
+		for _, i := range []int{0, 0, 0} {
+			select {
+			case r := <-chResult:
+				if r != i {
+					t.Errorf("workers(%v) result received but not euqal %v != %v", workers, r, i)
+				}
+			}
+		}
+	}
+
+	testSchedule(1)
+
+	if err := scheduler.ChangeWorkers(3); err != nil {
+		t.Errorf("ChangeWorkers 3 err = %v", err)
+	}
+
+	testSchedule(3)
+
+	if err := scheduler.ChangeWorkers(0); err != nil {
+		t.Errorf("ChangeWorkers 0 err = %v", err)
+	}
+
+	testSchedule(0)
+}

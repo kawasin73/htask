@@ -6,6 +6,8 @@ In-memory task scheduler using Min Heap implemented in Golang.
 
 htask creates only `1 (scheduler) + n (worker)` goroutines, NOT creating goroutines for each task.
 
+if workers size == 0 then scheduler create goroutine for each task when timer have expired.
+
 ## Install
 
 ```bash
