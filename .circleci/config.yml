@@ -17,11 +17,19 @@ jobs:
       - checkout
 
       - run:
-          name: running unit tests
+          name: running scheduler tests
           command: |
             mkdir -p $TEST_RESULTS
-            trap "go-junit-report <${TEST_RESULTS}/go-test.out > ${TEST_RESULTS}/go-test-report.xml" EXIT
-            go test -v -race | tee ${TEST_RESULTS}/go-test.out
+            trap "go-junit-report <${TEST_RESULTS}/scheduler.out > ${TEST_RESULTS}/scheduler-test-report.xml" EXIT
+            go test -v -race | tee ${TEST_RESULTS}/scheduler.out
+
+      - run:
+          name: running cron tests
+          command: |
+            mkdir -p $TEST_RESULTS
+            trap "go-junit-report <${TEST_RESULTS}/cron.out > ${TEST_RESULTS}/cron-test-report.xml" EXIT
+            go test -v -race ./cron | tee ${TEST_RESULTS}/cron.out
+
       - store_artifacts:
           path: /tmp/test-results
           destination: raw-test-output
