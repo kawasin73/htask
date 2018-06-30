@@ -18,7 +18,7 @@ go get github.com/kawasin73/htask
 
 ## Cron Usage
 
-```
+```go
 package main
 
 import (
