@@ -2,6 +2,8 @@
 
 [![CircleCI](https://circleci.com/gh/kawasin73/htask/tree/master.svg?style=svg)](https://circleci.com/gh/kawasin73/htask/tree/master)
 
+![htask.png](./doc/htask.png)
+
 High Scalable In-memory task scheduler using Min Heap implemented in Golang.
 
 htask creates only `1 (scheduler) + n (worker)` goroutines, NOT creating goroutines for each task.
@@ -9,6 +11,8 @@ htask creates only `1 (scheduler) + n (worker)` goroutines, NOT creating gorouti
 if workers size == 0 then scheduler create goroutine for each task when timer have expired.
 
 `github.com/kawasin73/htask/cron` is wrapper of htask.Scheduler, cron implementation with human friendly interface.
+
+Japanese blog -> [Goでスケーラブルなスケジューラを書いた](https://qiita.com/kawasin73/items/7af6766c7898a656b1ee)
 
 ## Install
 
