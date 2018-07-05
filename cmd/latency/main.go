@@ -26,13 +26,12 @@ type job struct {
 	chResult chan<- result
 }
 
-func (j job) task(expired time.Time) {
-	j.chResult <- result{scheduledAt: j.t, expiredAt: expired, executedAt: time.Now()}
+func (j job) task(_ time.Time) {
+	j.chResult <- result{scheduledAt: j.t, executedAt: time.Now()}
 }
 
 type result struct {
 	scheduledAt time.Time
-	expiredAt   time.Time
 	executedAt  time.Time
 }
 
@@ -53,24 +52,13 @@ func run(total int, workers int, interval time.Duration) {
 	}
 
 	fmt.Printf("set %v tasks in %v. interval = %v, total=%v, workers=%v\n", total, time.Now().Sub(start), interval, interval*time.Duration(total), workers)
-	var minExpired, maxExpired, sumExpired, minExecuted, maxExecuted, sumExecuted time.Duration
-	minExpired, minExecuted = time.Duration(math.MaxInt64), time.Duration(math.MaxInt64)
-	var iExpiredMin, iExpiredMax, iExecutedMin, iExecutedMax int
+	var minExecuted, maxExecuted, sumExecuted time.Duration
+	minExecuted = time.Duration(math.MaxInt64)
+	var iExecutedMin, iExecutedMax int
 	var lastExecutedAt time.Time
 	for i := 0; i < total; i++ {
 		r := <-chResult
-		expired := r.expiredAt.Sub(r.scheduledAt)
-		if expired > maxExpired {
-			maxExpired = expired
-			iExpiredMax = i
-		}
-		if expired < minExpired {
-			minExpired = expired
-			iExpiredMin = i
-		}
-		sumExpired += expired
-
-		executed := r.executedAt.Sub(r.expiredAt)
+		executed := r.executedAt.Sub(r.scheduledAt)
 		if executed > maxExecuted {
 			maxExecuted = executed
 			iExecutedMax = i
@@ -85,12 +73,9 @@ func run(total int, workers int, interval time.Duration) {
 			lastExecutedAt = r.executedAt
 		}
 	}
-	meanExpired := sumExpired / time.Duration(total)
 	meanExecuted := sumExecuted / time.Duration(total)
 
 	fmt.Printf("all task have executed in %v.\n", lastExecutedAt.Sub(first))
-	fmt.Printf("task expired  latency : mean=%v, min=%v, max=%v\n", meanExpired, minExpired, maxExpired)
 	fmt.Printf("task executed latency : mean=%v, min=%v, max=%v\n", meanExecuted, minExecuted, maxExecuted)
-	fmt.Printf("expired  min index=%v, max index=%v\n", iExpiredMin, iExpiredMax)
 	fmt.Printf("executed min index=%v, max index=%v\n", iExecutedMin, iExecutedMax)
 }
