@@ -143,6 +143,28 @@ go test -bench=. -count=10 > bench.txt && benchstat bench.txt
 go run cmd/latency/main.go -interval=1000000 -n 10000 -worker=0
 ```
 
+### benchmark result
+
+```
+$ go run cmd/latency/main.go -interval=1000 -n 1000000 -worker=0
+set 1000000 tasks in 2.995069909s. interval = 1µs, total=1s, workers=0
+all task have executed in 1.187109126s.
+task executed latency : mean=89.401961ms, min=825.441µs, max=187.529808ms
+executed min index=0, max index=995060
+
+$ go run cmd/latency/main.go -interval=100000 -n 100000 -worker=0
+set 100000 tasks in 292.649906ms. interval = 100µs, total=10s, workers=0
+all task have executed in 9.99992153s.
+task executed latency : mean=27.207µs, min=12.938µs, max=1.195354ms
+executed min index=74683, max index=0
+
+$ go run cmd/latency/main.go -interval=1000000 -n 10000 -worker=0
+set 10000 tasks in 28.64034ms. interval = 1ms, total=10s, workers=0
+all task have executed in 9.999248894s.
+task executed latency : mean=270.313µs, min=30.631µs, max=5.821627ms
+executed min index=9118, max index=6563
+```
+
 ## LICENSE
 
 MIT
