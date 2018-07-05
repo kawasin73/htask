@@ -52,7 +52,7 @@ func run(total int, workers int, interval time.Duration) {
 		next = next.Add(interval * time.Nanosecond)
 	}
 
-	fmt.Printf("set %v tasks in %v. interval = %v, total=%v\n", total, time.Now().Sub(start), interval, interval*time.Duration(total))
+	fmt.Printf("set %v tasks in %v. interval = %v, total=%v, workers=%v\n", total, time.Now().Sub(start), interval, interval*time.Duration(total), workers)
 	var minExpired, maxExpired, sumExpired, minExecuted, maxExecuted, sumExecuted time.Duration
 	minExpired, minExecuted = time.Duration(math.MaxInt64), time.Duration(math.MaxInt64)
 	var iExpiredMin, iExpiredMax, iExecutedMin, iExecutedMax int

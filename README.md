@@ -128,7 +128,20 @@ Scheduler Interface
 ## Notes
 
 - min heap have no limit size.
-- when main context is canceled, all pending tasks will be discarded.
+- when scheduler is closed, all pending tasks will be discarded.
+
+## Benchmarking
+
+```
+# using benchstat
+go get -u golang.org/x/perf/cmd/benchstat
+
+# benchmark Scheduler.Set()
+go test -bench=. -count=10 > bench.txt && benchstat bench.txt
+
+# benchmark latency
+go run cmd/latency/main.go -interval=1000000 -n 10000 -worker=0
+```
 
 ## LICENSE
 
