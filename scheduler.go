@@ -75,22 +75,26 @@ func (c *Scheduler) Set(chCancel <-chan struct{}, t time.Time, task func(time.Ti
 }
 
 type scheduleState struct {
-	heap    *minHeap
-	job     job
-	chWork  chan<- job
-	timer   *time.Timer
-	expired bool // timer is expired or not
+	heap     *minHeap
+	job      job
+	chWork   chan<- job
+	timer    *time.Timer
+	expired  bool // timer is expired or not
+	lastTime time.Time
+
+	chWorkPrivate chan<- job // cache
 }
 
-func newScheduleState(heapSize int) *scheduleState {
+func newScheduleState(heapSize int, chWork chan<- job) *scheduleState {
 	timer := time.NewTimer(time.Second)
 	if !timer.Stop() {
 		<-timer.C
 	}
 	return &scheduleState{
-		heap:    newMinHeap(heapSize),
-		timer:   timer,
-		expired: true,
+		heap:          newMinHeap(heapSize),
+		timer:         timer,
+		expired:       true,
+		chWorkPrivate: chWork,
 	}
 }
 
@@ -101,6 +105,7 @@ func (s *scheduleState) add(newJob job) error {
 	if !s.expired && !s.timer.Stop() {
 		<-s.timer.C
 	}
+	// TODO: if job is expired not reset for performance
 	s.job = s.heap.peek()
 	s.chWork = nil
 	// s.job must not be empty
@@ -109,32 +114,42 @@ func (s *scheduleState) add(newJob job) error {
 	return nil
 }
 
-func (s *scheduleState) next() {
+func (s *scheduleState) next() bool {
 	if !s.expired && !s.timer.Stop() {
 		<-s.timer.C
 	}
 	_ = s.heap.pop()
 	s.job = s.heap.peek()
-	s.chWork = nil
 	if s.job.t.IsZero() {
 		s.expired = true
+		s.chWork = nil
+		return false
+	} else if s.job.t.Before(s.lastTime) {
+		// skip to reset timer and execute next job directly
+		s.expired = true
+		s.chWork = s.chWorkPrivate
+		s.job.t = s.lastTime
+		return true
 	} else {
 		s.timer.Reset(s.job.t.Sub(time.Now()))
 		s.expired = false
+		s.chWork = nil
+		return false
 	}
 }
 
-func (s *scheduleState) time(t time.Time, chWork chan<- job) {
+func (s *scheduleState) time(t time.Time) {
 	s.expired = true
-	s.chWork = chWork
+	s.chWork = s.chWorkPrivate
 	s.job.t = t
+	s.lastTime = t
 }
 
 func (c *Scheduler) scheduler(wg *sync.WaitGroup, workers int) {
 	defer wg.Done()
 	// no limited min heap
 	// TODO: use limited heap
-	state := newScheduleState(0)
+	state := newScheduleState(0, c.chWork)
 	for {
 		select {
 		case <-c.chClose:
@@ -142,7 +157,9 @@ func (c *Scheduler) scheduler(wg *sync.WaitGroup, workers int) {
 		case workers = <-c.chWorkers:
 			if workers == 0 && state.chWork != nil {
 				go state.job.task(state.job.t)
-				state.next()
+				for state.next() {
+					go state.job.task(state.job.t)
+				}
 			}
 		case newJob := <-c.chJob:
 			if err := state.add(newJob); err != nil {
@@ -150,15 +167,24 @@ func (c *Scheduler) scheduler(wg *sync.WaitGroup, workers int) {
 				panic(err)
 			}
 		case <-state.job.chCancel:
-			state.next()
+			for state.next() {
+				if workers == 0 {
+					go state.job.task(state.job.t)
+				} else {
+					// chWork works
+					break
+				}
+			}
 		case t := <-state.timer.C:
-			state.time(t, c.chWork)
+			state.time(t)
 			if workers == 0 {
 				go state.job.task(state.job.t)
-				state.next()
+				for state.next() {
+					go state.job.task(state.job.t)
+				}
 			}
 		case state.chWork <- state.job:
-			state.next()
+			_ = state.next()
 		}
 	}
 }
