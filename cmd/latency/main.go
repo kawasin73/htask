@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"math"
+	"sort"
 	"sync"
 	"time"
 
@@ -22,12 +23,11 @@ func main() {
 }
 
 type job struct {
-	t        time.Time
-	chResult chan<- result
+	i int
 }
 
 func (j job) task(_ time.Time) {
-	j.chResult <- result{scheduledAt: j.t, executedAt: time.Now()}
+	results[j.i].executedAt = time.Now()
 }
 
 type result struct {
@@ -35,8 +35,10 @@ type result struct {
 	executedAt  time.Time
 }
 
+var results []result
+
 func run(total int, workers int, interval time.Duration) {
-	chResult := make(chan result, total)
+	results = make([]result, total)
 	start := time.Now()
 	var wg sync.WaitGroup
 	s := htask.NewScheduler(&wg, workers)
@@ -47,35 +49,51 @@ func run(total int, workers int, interval time.Duration) {
 	first := start.Add(time.Second + time.Duration(total*2000))
 	next := first
 	for i := 0; i < total; i++ {
-		s.Set(nil, next, job{t: next, chResult: chResult}.task)
+		s.Set(nil, next, job{i: i}.task)
+		results[i].scheduledAt = next
 		next = next.Add(interval * time.Nanosecond)
 	}
+	chDone := make(chan struct{})
+	s.Set(nil, next.Add(interval*time.Nanosecond), func(_ time.Time) {
+		time.Sleep(500 * time.Millisecond)
+		close(chDone)
+	})
 
 	fmt.Printf("set %v tasks in %v. interval = %v, total=%v, workers=%v\n", total, time.Now().Sub(start), interval, interval*time.Duration(total), workers)
-	var minExecuted, maxExecuted, sumExecuted time.Duration
-	minExecuted = time.Duration(math.MaxInt64)
-	var iExecutedMin, iExecutedMax int
+	var min, max, sum time.Duration
+	min = time.Duration(math.MaxInt64)
+	var imin, imax int
 	var lastExecutedAt time.Time
+
+	// wait all task executed
+	<-chDone
+
 	for i := 0; i < total; i++ {
-		r := <-chResult
+		r := results[i]
 		executed := r.executedAt.Sub(r.scheduledAt)
-		if executed > maxExecuted {
-			maxExecuted = executed
-			iExecutedMax = i
+		if executed > max {
+			max = executed
+			imax = i
 		}
-		if executed < minExecuted {
-			minExecuted = executed
-			iExecutedMin = i
+		if executed < min {
+			min = executed
+			imin = i
 		}
-		sumExecuted += executed
+		sum += executed
 
 		if r.executedAt.After(lastExecutedAt) {
 			lastExecutedAt = r.executedAt
 		}
 	}
-	meanExecuted := sumExecuted / time.Duration(total)
+	mean := sum / time.Duration(total)
+
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].executedAt.Sub(results[i].scheduledAt) < results[j].executedAt.Sub(results[j].scheduledAt)
+	})
+
+	median := results[total/2].executedAt.Sub(results[total/2].scheduledAt)
 
 	fmt.Printf("all task have executed in %v.\n", lastExecutedAt.Sub(first))
-	fmt.Printf("task executed latency : mean=%v, min=%v, max=%v\n", meanExecuted, minExecuted, maxExecuted)
-	fmt.Printf("executed min index=%v, max index=%v\n", iExecutedMin, iExecutedMax)
+	fmt.Printf("task executed latency : mean=%v, median=%v, min=%v, max=%v\n", mean, median, min, max)
+	fmt.Printf("executed min index=%v, max index=%v\n", imin, imax)
 }
